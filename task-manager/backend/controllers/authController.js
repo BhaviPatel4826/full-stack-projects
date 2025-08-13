@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 
 
 //Generate JWT Token
-const generateToken = (userID) => {
+const generateToken = (userId) => {
     return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
 }
 
@@ -14,7 +14,44 @@ const generateToken = (userID) => {
 // @route  POST /api/auth/register
 // @access Public
 const registerUser = async (req, res) => {
-    try {} catch (err){
+    try {
+        const { name, email, password, profileImageUrl, adminInviteToken } = 
+            req.body;
+
+        const userExists = await User.findOne({ email });
+        if (userExists) {
+            return res.status(400).json({ message: "User already existed "});
+        }
+
+        let role = "member";
+        if( adminInviteToken && 
+            adminInviteToken == ProcessingInstruction.env.ADMIN_INVITE_TOKEN
+        ){
+            role = "admin";
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const user = await User.create({
+            name,
+            email,
+            password: hashedPassword,
+            profileImageUrl,
+            role,
+        });
+
+        //return user data with JWT
+        res.status(201).json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            profileImageUrl: user.profileImageUrl,
+            token: generateToken(user._id),
+        });
+
+    } catch (err){
         res.status(500).json({ message: "Server error", error: error.message});
     }
 };
@@ -23,7 +60,31 @@ const registerUser = async (req, res) => {
 // @route  POST /api/auth/login
 // @access Public
 const loginUser = async (req, res) => {
-    try {} catch (err){
+    try {
+        const { email, password } = req.body;
+
+        const user = await User.findOne({ email });
+
+        if(!user){
+            return res.status(401).json({message: "Invalid email or password"});
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+
+        if(!isMatch){
+            return res.status(401).json({ message: "Invalid email or password" });
+        }
+
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            profileImageUrl: user.profileImageUrl,
+            token: generateToken(user._id),
+        });
+
+    } catch (err){
         res.status(500).json({ message: "Server error", error: error.message});
     }
 };
@@ -32,7 +93,18 @@ const loginUser = async (req, res) => {
 // @route  GET /api/auth/profile
 // @access Private (Requires JWT)
 const getUserProfile = async (req, res) => {
-    try {} catch (err){
+    try {
+        const { name, email, password, profileImageUrl } = req.body;
+
+        const user = await User.findOne({ email });
+        if(!user){
+            return res.status(401).json({message: "User not found"});
+        }
+
+        res.json(user);
+
+
+    } catch (err){
         res.status(500).json({ message: "Server error", error: error.message});
     }
 };
@@ -41,7 +113,29 @@ const getUserProfile = async (req, res) => {
 // @route  PUT /api/auth/profile
 // @access Private (Requires JWT)
 const updateUserProfile = async (req, res) => {
-    try {} catch (err){
+    try {
+
+        const user = await User.findById(req.user.id);
+
+        user.name = req.body.name || user.name;
+        user.email = req.body.email || user.email;
+        
+        if(req.body.password){
+            const salt = await bcrypt.genSalt(10);
+            user.password = await bcrypt.hash(req.body.password, salt);
+        }
+
+        const updatedUser = await user.save();
+
+        res.json({
+            _id: updatedUser._id,
+            name: updatedUser.name,
+            email: updatedUser.email,
+            role: updatedUser.role,
+            token: generateToken(updatedUser._id),
+        });
+
+    } catch (err){
         res.status(500).json({ message: "Server error", error: error.message});
     }
 };
