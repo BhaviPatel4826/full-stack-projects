@@ -9,6 +9,7 @@ const {
     getDashboardData,
     getUserDashboardData,
 } = require("../controllers/taskController");
+
 const { protect, adminOnly } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
